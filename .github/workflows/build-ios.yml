@@ -18,9 +18,9 @@ jobs:
           cat << 'EOF' > extract.py
           import zipfile, os, glob
           zips = glob.glob("*.zip")
-          print("Found zips:", zips)
-          if zips:
-              with zipfile.ZipFile(zips[0], "r") as z:
+          print("Found zip files:", zips)
+          for zpath in zips:
+              with zipfile.ZipFile(zpath, "r") as z:
                   for member in z.infolist():
                       normalized = member.filename.replace("\\", "/")
                       if not normalized or normalized.endswith("/"):
