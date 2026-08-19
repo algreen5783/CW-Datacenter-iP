@@ -31,7 +31,7 @@ jobs:
                           if parent:
                               os.makedirs(parent, exist_ok=True)
                           with open(normalized, "wb") as outfile:
-                              outfile.write(z.read(member.name))
+                              outfile.write(z.read(member))
           EOF
           python3 extract.py
           ls -la
