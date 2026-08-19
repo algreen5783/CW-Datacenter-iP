@@ -1,0 +1,73 @@
+name: Build iOS App (.ipa)
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Extract Source Zip
+        run: |
+          cat << 'EOF' > extract.py
+          import zipfile, os, glob
+          zips = glob.glob("*.zip")
+          print("Found zips:", zips)
+          if zips:
+              with zipfile.ZipFile(zips[0], "r") as z:
+                  for member in z.infolist():
+                      normalized = member.filename.replace("\\", "/")
+                      if not normalized or normalized.endswith("/"):
+                          if normalized:
+                              os.makedirs(normalized, exist_ok=True)
+                      else:
+                          parent = os.path.dirname(normalized)
+                          if parent:
+                              os.makedirs(parent, exist_ok=True)
+                          with open(normalized, "wb") as outfile:
+                              outfile.write(z.read(member.name))
+          EOF
+          python3 extract.py
+          ls -la
+          ls -la ios
+
+      - name: Select Xcode
+        run: sudo xcode-select -switch /Applications/Xcode.app
+
+      - name: Compile and Build iOS App
+        run: |
+          cd ios
+          xcodebuild build \
+            -project CWDatacenter.xcodeproj \
+            -target CWDatacenter \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
+
+      - name: Package .ipa File
+        run: |
+          cd ios
+          mkdir -p Payload
+          APP_PATH=$(find build -name "CWDatacenter.app" -type d | head -n 1)
+          echo "Found app at: $APP_PATH"
+          cp -r "$APP_PATH" Payload/
+          zip -r CW-Datacenter-iOS-1.4.0.ipa Payload
+          rm -rf Payload
+
+      - name: Upload .ipa Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CW-Datacenter-iOS-1.4.0
+          path: ios/CW-Datacenter-iOS-1.4.0.ipa
+          retention-days: 14
