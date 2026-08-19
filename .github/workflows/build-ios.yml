@@ -48,8 +48,6 @@ jobs:
             -target CWDatacenter \
             -configuration Release \
             -sdk iphoneos \
-            -destination "generic/platform=iOS" \
-            -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
@@ -59,7 +57,7 @@ jobs:
         run: |
           cd ios
           mkdir -p Payload
-          APP_PATH=$(find build -name "CWDatacenter.app" -type d | head -n 1)
+          APP_PATH=$(find . -name "CWDatacenter.app" -type d | head -n 1)
           echo "Found app at: $APP_PATH"
           cp -r "$APP_PATH" Payload/
           zip -r CW-Datacenter-iOS-1.4.0.ipa Payload
