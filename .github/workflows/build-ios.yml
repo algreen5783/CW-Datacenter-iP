@@ -1,71 +1,180 @@
-name: Build iOS App (.ipa)
+name: Build CW Datacenter iOS 1.6.28 IPA
 
 on:
-  push:
-    branches: [ main, master ]
   workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - "*.zip"
+      - "CWDatacenter/**"
+      - "CWDatacenterShare/**"
+      - "CWDatacenter.xcodeproj/**"
+      - ".github/workflows/build-ipa.yml"
 
 jobs:
-  build-ios:
-    runs-on: macos-latest
-
+  build-unsigned-ipa:
+    runs-on: macos-15
+    timeout-minutes: 45
     steps:
-      - name: Checkout Code
+      - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Extract Source Zip
+      - name: Extract source ZIP when required
+        shell: bash
         run: |
-          cat << 'EOF' > extract.py
-          import zipfile, os, glob
-          zips = glob.glob("*.zip")
-          print("Found zip files:", zips)
-          for zpath in zips:
-              with zipfile.ZipFile(zpath, "r") as z:
-                  for member in z.infolist():
-                      normalized = member.filename.replace("\\", "/")
-                      if not normalized or normalized.endswith("/"):
-                          if normalized:
-                              os.makedirs(normalized, exist_ok=True)
-                      else:
-                          parent = os.path.dirname(normalized)
-                          if parent:
-                              os.makedirs(parent, exist_ok=True)
-                          with open(normalized, "wb") as outfile:
-                              outfile.write(z.read(member))
-          EOF
-          python3 extract.py
-          ls -la
-          ls -la ios
+          set -euo pipefail
 
-      - name: Select Xcode
-        run: sudo xcode-select -switch /Applications/Xcode.app
+          SOURCE_ROOT="$GITHUB_WORKSPACE"
+          PREFERRED_ZIP="$GITHUB_WORKSPACE/CW-Datacenter-iOS-1.6.28-GitHub-IPA-Build.zip"
+          if [[ -f "$PREFERRED_ZIP" ]]; then
+            ZIP_PATH="$PREFERRED_ZIP"
+          else
+            ZIP_PATH="$(find "$GITHUB_WORKSPACE" -maxdepth 1 -type f -name 'CW-Datacenter-iOS-*-GitHub-IPA-Build*.zip' -print | sort | tail -n 1)"
+          fi
+          if [[ -n "$ZIP_PATH" ]]; then
+            echo "Đang giải nén: $(basename "$ZIP_PATH")"
+            EXTRACT_DIR="$RUNNER_TEMP/cw-ios-source"
+            rm -rf "$EXTRACT_DIR"
+            mkdir -p "$EXTRACT_DIR"
+            ditto -x -k "$ZIP_PATH" "$EXTRACT_DIR"
 
-      - name: Compile and Build iOS App
+            PROJECT_PATH="$(find "$EXTRACT_DIR" -type d -name 'CWDatacenter.xcodeproj' -print -quit)"
+            if [[ -z "$PROJECT_PATH" ]]; then
+              echo "::error::ZIP không chứa CWDatacenter.xcodeproj."
+              exit 1
+            fi
+            SOURCE_ROOT="$(dirname "$PROJECT_PATH")"
+          elif [[ ! -d "$SOURCE_ROOT/CWDatacenter.xcodeproj" ]]; then
+            echo "::error::Không tìm thấy project CWDatacenter.xcodeproj hoặc ZIP build iOS ở thư mục gốc repo."
+            exit 1
+          fi
+
+          echo "IOS_ROOT=$SOURCE_ROOT" >> "$GITHUB_ENV"
+          echo "Source root: $SOURCE_ROOT"
+          test -d "$SOURCE_ROOT/CWDatacenter.xcodeproj"
+          test -d "$SOURCE_ROOT/CWDatacenter"
+
+      - name: Validate source version and web bundle
+        shell: bash
         run: |
-          cd ios
-          xcodebuild build \
+          set -euo pipefail
+          cd "$IOS_ROOT"
+
+          require_file() {
+            if [[ ! -f "$1" ]]; then
+              echo "::error::Thiếu file bắt buộc: $1"
+              exit 1
+            fi
+          }
+
+          require_file CWDatacenter/Resources/Web/index.html
+          require_file CWDatacenter/Resources/Web/app.js
+          require_file CWDatacenter/App/AppLogger.swift
+          require_file CWDatacenterShare/ShareViewController.swift
+
+          SOURCE_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' CWDatacenter/Info.plist)"
+          SOURCE_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' CWDatacenter/Info.plist)"
+          if [[ "$SOURCE_VERSION" != "1.6.28" || "$SOURCE_BUILD" != "10628" ]]; then
+            echo "::error::Sai phiên bản source: nhận $SOURCE_VERSION ($SOURCE_BUILD), cần 1.6.28 (10628)."
+            exit 1
+          fi
+          grep -q "cw-web-version\" content=\"$SOURCE_VERSION" CWDatacenter/Resources/Web/index.html
+          grep -q "CW_WEB_VERSION = '$SOURCE_VERSION'" CWDatacenter/Resources/Web/app.js
+
+      - name: Build app without code signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$IOS_ROOT"
+          rm -rf build package
+
+          mkdir -p "$GITHUB_WORKSPACE/build-diagnostics"
+          BUILD_LOG="$GITHUB_WORKSPACE/build-diagnostics/xcodebuild.log"
+          RESULT_BUNDLE="$GITHUB_WORKSPACE/build-diagnostics/CWDatacenter.xcresult"
+
+          # Xcode 16.4 occasionally terminates the parallel app + share-extension
+          # build without printing a compiler diagnostic. Use one build worker and
+          # an explicit generic iOS destination so the chosen target is stable.
+          xcodebuild \
             -project CWDatacenter.xcodeproj \
-            -target CWDatacenter \
+            -scheme CWDatacenter \
             -configuration Release \
-            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$IOS_ROOT/build" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES
+            clean | tee "$BUILD_LOG"
 
-      - name: Package .ipa File
+          rm -rf "$RESULT_BUNDLE"
+          set +e
+          xcodebuild \
+            -project CWDatacenter.xcodeproj \
+            -scheme CWDatacenter \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$IOS_ROOT/build" \
+            -resultBundlePath "$RESULT_BUNDLE" \
+            -jobs 1 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            VALIDATE_PRODUCT=NO \
+            ONLY_ACTIVE_ARCH=NO \
+            build 2>&1 | tee -a "$BUILD_LOG"
+          BUILD_STATUS=${PIPESTATUS[0]}
+          set -e
+
+          if [[ "$BUILD_STATUS" -ne 0 ]]; then
+            echo "::group::Last 250 lines from xcodebuild"
+            tail -n 250 "$BUILD_LOG" || true
+            echo "::endgroup::"
+            grep -nEi 'error:|fatal error|failed|crash|signal' "$BUILD_LOG" | tail -n 120 || true
+            echo "::error::Xcode build failed. Download build-diagnostics for the full log and xcresult bundle."
+            exit "$BUILD_STATUS"
+          fi
+
+      - name: Validate and package unsigned IPA
+        shell: bash
         run: |
-          cd ios
-          mkdir -p Payload
-          APP_PATH=$(find . -name "CWDatacenter.app" -type d | head -n 1)
-          echo "Found app at: $APP_PATH"
-          cp -r "$APP_PATH" Payload/
-          zip -r CW-Datacenter-iOS-1.4.0.ipa Payload
-          rm -rf Payload
+          set -euo pipefail
+          cd "$IOS_ROOT"
+          APP_PATH="$(find build/Build/Products/Release-iphoneos -maxdepth 1 -type d -name 'CWDatacenter.app' -print -quit)"
+          test -n "$APP_PATH"
+          test -f "$APP_PATH/Web/index.html"
+          test -f "$APP_PATH/Web/app.js"
+          APP_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist")"
+          APP_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist")"
+          test "$APP_VERSION" = "1.6.28"
+          test "$APP_BUILD" = "10628"
+          test -d "$APP_PATH/PlugIns/CWDatacenterShare.appex"
+          grep -q "cw-web-version\" content=\"$APP_VERSION" "$APP_PATH/Web/index.html"
+          grep -q "CW_WEB_VERSION = '$APP_VERSION'" "$APP_PATH/Web/app.js"
 
-      - name: Upload .ipa Artifact
+          IPA_BASENAME="CW-Datacenter-iOS-1.6.28-unsigned"
+          OUTPUT_DIR="$GITHUB_WORKSPACE/ipa-output"
+          rm -rf package "$OUTPUT_DIR"
+          mkdir -p package/Payload "$OUTPUT_DIR"
+          ditto "$APP_PATH" package/Payload/CWDatacenter.app
+          (cd package && /usr/bin/zip -qry "$OUTPUT_DIR/${IPA_BASENAME}.ipa" Payload)
+          shasum -a 256 "$OUTPUT_DIR/${IPA_BASENAME}.ipa" > "$OUTPUT_DIR/${IPA_BASENAME}.ipa.sha256"
+
+      - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CW-Datacenter-iOS-1.4.0
-          path: ios/CW-Datacenter-iOS-1.4.0.ipa
+          name: CW-Datacenter-iOS-1.6.28-unsigned
+          path: |
+            ipa-output/CW-Datacenter-iOS-1.6.28-unsigned.ipa
+            ipa-output/CW-Datacenter-iOS-1.6.28-unsigned.ipa.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CW-Datacenter-iOS-build-diagnostics
+          path: build-diagnostics
+          if-no-files-found: ignore
           retention-days: 14
