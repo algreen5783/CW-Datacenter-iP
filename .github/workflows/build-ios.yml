@@ -1,4 +1,4 @@
-name: Build CW Datacenter iOS 1.6.28 IPA
+name: Build CW Datacenter iOS 1.6.29 IPA
 
 on:
   workflow_dispatch:
@@ -9,6 +9,7 @@ on:
       - "CWDatacenter/**"
       - "CWDatacenterShare/**"
       - "CWDatacenter.xcodeproj/**"
+      - "tests/**"
       - ".github/workflows/build-ipa.yml"
 
 jobs:
@@ -25,7 +26,7 @@ jobs:
           set -euo pipefail
 
           SOURCE_ROOT="$GITHUB_WORKSPACE"
-          PREFERRED_ZIP="$GITHUB_WORKSPACE/CW-Datacenter-iOS-1.6.28-GitHub-IPA-Build.zip"
+          PREFERRED_ZIP="$GITHUB_WORKSPACE/CW-Datacenter-iOS-1.6.29-GitHub-IPA-Build.zip"
           if [[ -f "$PREFERRED_ZIP" ]]; then
             ZIP_PATH="$PREFERRED_ZIP"
           else
@@ -74,12 +75,23 @@ jobs:
 
           SOURCE_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' CWDatacenter/Info.plist)"
           SOURCE_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' CWDatacenter/Info.plist)"
-          if [[ "$SOURCE_VERSION" != "1.6.28" || "$SOURCE_BUILD" != "10628" ]]; then
-            echo "::error::Sai phiên bản source: nhận $SOURCE_VERSION ($SOURCE_BUILD), cần 1.6.28 (10628)."
+          if [[ "$SOURCE_VERSION" != "1.6.29" || "$SOURCE_BUILD" != "10629" ]]; then
+            echo "::error::Sai phiên bản source: nhận $SOURCE_VERSION ($SOURCE_BUILD), cần 1.6.29 (10629)."
             exit 1
           fi
           grep -q "cw-web-version\" content=\"$SOURCE_VERSION" CWDatacenter/Resources/Web/index.html
           grep -q "CW_WEB_VERSION = '$SOURCE_VERSION'" CWDatacenter/Resources/Web/app.js
+
+      - name: Test Tailscale configuration and connection errors
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$IOS_ROOT"
+          python3 tests/check-tailscale-config.py
+          node --check CWDatacenter/Resources/Web/app.js
+          node --test tests/network-bridge.test.cjs
+          xcrun swiftc CWDatacenter/Network/HostConnectionDiagnostics.swift tests/main.swift -o "$RUNNER_TEMP/cw-host-network-tests"
+          "$RUNNER_TEMP/cw-host-network-tests"
 
       - name: Build app without code signing
         shell: bash
@@ -146,13 +158,14 @@ jobs:
           test -f "$APP_PATH/Web/app.js"
           APP_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist")"
           APP_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist")"
-          test "$APP_VERSION" = "1.6.28"
-          test "$APP_BUILD" = "10628"
+          test "$APP_VERSION" = "1.6.29"
+          test "$APP_BUILD" = "10629"
+          python3 tests/check-tailscale-config.py --app "$APP_PATH"
           test -d "$APP_PATH/PlugIns/CWDatacenterShare.appex"
           grep -q "cw-web-version\" content=\"$APP_VERSION" "$APP_PATH/Web/index.html"
           grep -q "CW_WEB_VERSION = '$APP_VERSION'" "$APP_PATH/Web/app.js"
 
-          IPA_BASENAME="CW-Datacenter-iOS-1.6.28-unsigned"
+          IPA_BASENAME="CW-Datacenter-iOS-1.6.29-unsigned"
           OUTPUT_DIR="$GITHUB_WORKSPACE/ipa-output"
           rm -rf package "$OUTPUT_DIR"
           mkdir -p package/Payload "$OUTPUT_DIR"
@@ -163,10 +176,10 @@ jobs:
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CW-Datacenter-iOS-1.6.28-unsigned
+          name: CW-Datacenter-iOS-1.6.29-unsigned
           path: |
-            ipa-output/CW-Datacenter-iOS-1.6.28-unsigned.ipa
-            ipa-output/CW-Datacenter-iOS-1.6.28-unsigned.ipa.sha256
+            ipa-output/CW-Datacenter-iOS-1.6.29-unsigned.ipa
+            ipa-output/CW-Datacenter-iOS-1.6.29-unsigned.ipa.sha256
           if-no-files-found: error
           retention-days: 30
 
