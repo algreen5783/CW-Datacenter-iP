@@ -1,4 +1,4 @@
-name: Build CW Datacenter iOS 1.6.42 IPA
+name: Build CW Datacenter iOS 1.6.43 IPA
 
 on:
   workflow_dispatch:
@@ -17,7 +17,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 45
     env:
-      IPA_BASENAME: CW-Datacenter-iOS-1.6.42-unsigned
+      IPA_BASENAME: CW-Datacenter-iOS-1.6.43-unsigned
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -28,7 +28,7 @@ jobs:
           set -euo pipefail
 
           SOURCE_ROOT="$GITHUB_WORKSPACE"
-          PREFERRED_ZIP="$GITHUB_WORKSPACE/CW-Datacenter-iOS-1.6.42-GitHub-IPA-Build.zip"
+          PREFERRED_ZIP="$GITHUB_WORKSPACE/CW-Datacenter-iOS-1.6.43-GitHub-IPA-Build.zip"
           if [[ -f "$PREFERRED_ZIP" ]]; then
             ZIP_PATH="$PREFERRED_ZIP"
           else
@@ -77,8 +77,8 @@ jobs:
 
           SOURCE_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' CWDatacenter/Info.plist)"
           SOURCE_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' CWDatacenter/Info.plist)"
-          if [[ "$SOURCE_VERSION" != "1.6.42" || "$SOURCE_BUILD" != "10642" ]]; then
-            echo "::error::Sai phiên bản source: nhận $SOURCE_VERSION ($SOURCE_BUILD), cần 1.6.42 (10642)."
+          if [[ "$SOURCE_VERSION" != "1.6.43" || "$SOURCE_BUILD" != "10643" ]]; then
+            echo "::error::Sai phiên bản source: nhận $SOURCE_VERSION ($SOURCE_BUILD), cần 1.6.43 (10643)."
             exit 1
           fi
           grep -q "cw-web-version\" content=\"$SOURCE_VERSION" CWDatacenter/Resources/Web/index.html
@@ -91,9 +91,11 @@ jobs:
           cd "$IOS_ROOT"
           python3 tests/check-tailscale-config.py
           node --check CWDatacenter/Resources/Web/app.js
-          node --test tests/network-bridge.test.cjs tests/ui-regressions.test.cjs tests/thumbnail-pipeline.test.cjs tests/video-player-actions.test.cjs tests/photos-overview.test.cjs
+          node --test tests/*.test.cjs
           xcrun swiftc CWDatacenter/Network/HostConnectionDiagnostics.swift tests/main.swift -o "$RUNNER_TEMP/cw-host-network-tests"
           "$RUNNER_TEMP/cw-host-network-tests"
+          xcrun swiftc -parse-as-library CWDatacenter/Network/LocalProxy.swift tests/ImageValidation.swift -o "$RUNNER_TEMP/cw-image-validation-tests"
+          "$RUNNER_TEMP/cw-image-validation-tests"
 
       - name: Build app without code signing
         shell: bash
@@ -160,8 +162,8 @@ jobs:
           test -f "$APP_PATH/Web/app.js"
           APP_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist")"
           APP_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist")"
-          test "$APP_VERSION" = "1.6.42"
-          test "$APP_BUILD" = "10642"
+          test "$APP_VERSION" = "1.6.43"
+          test "$APP_BUILD" = "10643"
           python3 tests/check-tailscale-config.py --app "$APP_PATH"
           test -d "$APP_PATH/PlugIns/CWDatacenterShare.appex"
           grep -q "cw-web-version\" content=\"$APP_VERSION" "$APP_PATH/Web/index.html"
