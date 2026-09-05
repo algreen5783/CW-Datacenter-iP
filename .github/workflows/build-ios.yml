@@ -16,6 +16,8 @@ jobs:
   build-unsigned-ipa:
     runs-on: macos-15
     timeout-minutes: 45
+    env:
+      IPA_BASENAME: CW-Datacenter-iOS-1.6.42-unsigned
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -165,21 +167,22 @@ jobs:
           grep -q "cw-web-version\" content=\"$APP_VERSION" "$APP_PATH/Web/index.html"
           grep -q "CW_WEB_VERSION = '$APP_VERSION'" "$APP_PATH/Web/app.js"
 
-          IPA_BASENAME="CW-Datacenter-iOS-1.6.42-unsigned"
           OUTPUT_DIR="$GITHUB_WORKSPACE/ipa-output"
           rm -rf package "$OUTPUT_DIR"
           mkdir -p package/Payload "$OUTPUT_DIR"
           ditto "$APP_PATH" package/Payload/CWDatacenter.app
           (cd package && /usr/bin/zip -qry "$OUTPUT_DIR/${IPA_BASENAME}.ipa" Payload)
           shasum -a 256 "$OUTPUT_DIR/${IPA_BASENAME}.ipa" > "$OUTPUT_DIR/${IPA_BASENAME}.ipa.sha256"
+          test -s "$OUTPUT_DIR/${IPA_BASENAME}.ipa"
+          test -s "$OUTPUT_DIR/${IPA_BASENAME}.ipa.sha256"
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CW-Datacenter-iOS-1.6.42-unsigned
+          name: ${{ env.IPA_BASENAME }}
           path: |
-            ipa-output/CW-Datacenter-iOS-1.6.41-unsigned.ipa
-            ipa-output/CW-Datacenter-iOS-1.6.41-unsigned.ipa.sha256
+            ipa-output/${{ env.IPA_BASENAME }}.ipa
+            ipa-output/${{ env.IPA_BASENAME }}.ipa.sha256
           if-no-files-found: error
           retention-days: 30
 
