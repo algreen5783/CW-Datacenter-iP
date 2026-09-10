@@ -39,9 +39,15 @@ jobs:
             EXTRACT_DIR="$RUNNER_TEMP/cw-ios-source"
             rm -rf "$EXTRACT_DIR"
             mkdir -p "$EXTRACT_DIR"
-            ditto -x -k "$ZIP_PATH" "$EXTRACT_DIR"
+            ditto -x -k "$ZIP_PATH" "$EXTRACT_DIR" || unzip -q -o "$ZIP_PATH" -d "$EXTRACT_DIR"
 
-            PROJECT_PATH="$(find "$EXTRACT_DIR" -type d -name 'CWDatacenter.xcodeproj' -print -quit)"
+            PROJECT_FILE="$(find "$EXTRACT_DIR" -name 'project.pbxproj' -print -quit)"
+            if [[ -n "$PROJECT_FILE" ]]; then
+              PROJECT_PATH="$(dirname "$PROJECT_FILE")"
+            else
+              PROJECT_PATH="$(find "$EXTRACT_DIR" -type d -name 'CWDatacenter.xcodeproj' -print -quit)"
+            fi
+
             if [[ -z "$PROJECT_PATH" ]]; then
               echo "::error::ZIP không chứa CWDatacenter.xcodeproj."
               exit 1
