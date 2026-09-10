@@ -1,4 +1,4 @@
-name: Build CW Datacenter iOS 1.6.63 IPA
+name: Build CW Datacenter iOS 1.6.64 IPA
 
 on:
   workflow_dispatch:
@@ -17,7 +17,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 45
     env:
-      IPA_BASENAME: CW-Datacenter-iOS-1.6.63-unsigned
+      IPA_BASENAME: CW-Datacenter-iOS-1.6.64-unsigned
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -28,7 +28,7 @@ jobs:
           set -euo pipefail
 
           SOURCE_ROOT="$GITHUB_WORKSPACE"
-          PREFERRED_ZIP="$GITHUB_WORKSPACE/CW-Datacenter-iOS-1.6.63-GitHub-IPA-Build.zip"
+          PREFERRED_ZIP="$GITHUB_WORKSPACE/CW-Datacenter-iOS-1.6.64-GitHub-IPA-Build.zip"
           if [[ -f "$PREFERRED_ZIP" ]]; then
             ZIP_PATH="$PREFERRED_ZIP"
           else
@@ -83,8 +83,8 @@ jobs:
 
           SOURCE_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' CWDatacenter/Info.plist)"
           SOURCE_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' CWDatacenter/Info.plist)"
-          if [[ "$SOURCE_VERSION" != "1.6.63" || "$SOURCE_BUILD" != "10663" ]]; then
-            echo "::error::Sai phiên bản source: nhận $SOURCE_VERSION ($SOURCE_BUILD), cần 1.6.63 (10663)."
+          if [[ "$SOURCE_VERSION" != "1.6.64" || "$SOURCE_BUILD" != "10664" ]]; then
+            echo "::error::Sai phiên bản source: nhận $SOURCE_VERSION ($SOURCE_BUILD), cần 1.6.64 (10664)."
             exit 1
           fi
           grep -q "cw-web-version\" content=\"$SOURCE_VERSION" CWDatacenter/Resources/Web/index.html
@@ -168,8 +168,8 @@ jobs:
           test -f "$APP_PATH/Web/app.js"
           APP_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist")"
           APP_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist")"
-          test "$APP_VERSION" = "1.6.63"
-          test "$APP_BUILD" = "10663"
+          test "$APP_VERSION" = "1.6.64"
+          test "$APP_BUILD" = "10664"
           python3 tests/check-tailscale-config.py --app "$APP_PATH"
           test -d "$APP_PATH/PlugIns/CWDatacenterShare.appex"
           grep -q "cw-web-version\" content=\"$APP_VERSION" "$APP_PATH/Web/index.html"
